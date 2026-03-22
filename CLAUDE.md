@@ -6,7 +6,7 @@ Piano learning website where users paste a YouTube link or upload a MIDI/MusicXM
 ## Tech Stack
 - **Frontend**: Next.js 15 + TypeScript + Tailwind CSS v4 (dark theme)
 - **Backend**: Next.js API routes + Python scripts (spawned via child_process)
-- **Audio Pipeline**: yt-dlp → basic-pitch (Spotify) → note events → JSON
+- **Audio Pipeline**: Piped API (yt-dlp fallback) → ffmpeg → basic-pitch (Spotify) → note events → JSON
 - **File Parsing**: pretty_midi (MIDI files), music21 (MusicXML files)
 - **Piano Sound**: Tone.js Sampler with Salamander Grand Piano samples (CDN-hosted)
 - **Sheet Music**: abcjs (ABC notation renderer, dynamically imported)
@@ -51,6 +51,12 @@ Piano learning website where users paste a YouTube link or upload a MIDI/MusicXM
 - ResizeObserver in `page.tsx` computes `keyWidth` from container width
 - Shared scroll container between FallingNotes and PianoKeyboard
 - Auto-scrolls to center on active notes during playback
+
+### YouTube Audio Download
+- Uses **Piped API** (open-source YouTube proxy) as primary method — bypasses YouTube's datacenter IP blocks
+- Tries multiple Piped instances: `pipedapi.kavin.rocks`, `watchapi.whatever.social`, `api.piped.yt`
+- Falls back to `yt-dlp` if all Piped instances fail (works on local dev)
+- Audio stream downloaded via `requests`, converted to WAV via `ffmpeg`
 
 ### Transcription
 - Uses `basic-pitch` (Spotify) — fast on CPU with good polyphony detection

@@ -12,7 +12,10 @@ import os
 import json
 import tempfile
 import subprocess
+import re
 from pathlib import Path
+
+import requests
 
 
 def update_status(output_dir: str, job_id: str, status: str, data=None, error=None):
@@ -26,35 +29,99 @@ def update_status(output_dir: str, job_id: str, status: str, data=None, error=No
     status_file.write_text(json.dumps(payload))
 
 
-def download_audio(url: str, output_path: str) -> str:
-    """Download audio from YouTube using yt-dlp."""
-    output_template = os.path.join(output_path, "audio.%(ext)s")
-    cmd = [
-        "yt-dlp",
-        "-x",
-        "--audio-format", "wav",
-        "--audio-quality", "0",
-        "-o", output_template,
-        "--no-playlist",
-        "--max-downloads", "1",
-        "--js-runtimes", "node",
-        "--remote-components", "ejs:github",
-        url,
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://watchapi.whatever.social",
+    "https://api.piped.yt",
+]
+
+
+def extract_video_id(url: str) -> str:
+    """Extract YouTube video ID from various URL formats."""
+    patterns = [
+        r'(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})',
+        r'(?:shorts/)([a-zA-Z0-9_-]{11})',
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    raise ValueError(f"Could not extract video ID from: {url}")
 
-    for f in os.listdir(output_path):
-        if f.endswith(".wav"):
-            return os.path.join(output_path, f)
 
-    error_msg = (result.stderr or result.stdout or "Unknown error").strip()
-    raise RuntimeError(f"yt-dlp failed: {error_msg}")
+def fetch_piped_streams(video_id: str) -> dict:
+    """Fetch stream data from Piped API, trying multiple instances."""
+    errors = []
+    for instance in PIPED_INSTANCES:
+        try:
+            resp = requests.get(f"{instance}/streams/{video_id}", timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "audioStreams" in data and data["audioStreams"]:
+                    return data
+                errors.append(f"{instance}: no audio streams in response")
+            else:
+                errors.append(f"{instance}: HTTP {resp.status_code}")
+        except requests.RequestException as e:
+            errors.append(f"{instance}: {e}")
+    raise RuntimeError(f"All Piped instances failed: {'; '.join(errors)}")
+
+
+def download_audio(url: str, output_path: str) -> str:
+    """Download audio from YouTube via Piped API, with yt-dlp fallback."""
+    video_id = extract_video_id(url)
+    wav_path = os.path.join(output_path, "audio.wav")
+
+    try:
+        data = fetch_piped_streams(video_id)
+        # Pick the highest-bitrate audio stream
+        streams = sorted(data["audioStreams"], key=lambda s: s.get("bitrate", 0), reverse=True)
+        audio_url = streams[0]["url"]
+
+        # Download audio stream
+        raw_path = os.path.join(output_path, "audio_raw")
+        with requests.get(audio_url, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(raw_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        # Convert to WAV with ffmpeg
+        cmd = ["ffmpeg", "-y", "-i", raw_path, "-ar", "44100", "-ac", "1", wav_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+
+        return wav_path
+    except Exception as piped_err:
+        # Fallback to yt-dlp (works on local dev where YouTube doesn't block)
+        print(f"Piped API failed ({piped_err}), falling back to yt-dlp...")
+        output_template = os.path.join(output_path, "audio.%(ext)s")
+        cmd = [
+            "yt-dlp", "-x", "--audio-format", "wav", "--audio-quality", "0",
+            "-o", output_template, "--no-playlist", "--max-downloads", "1",
+            url,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        for f in os.listdir(output_path):
+            if f.endswith(".wav"):
+                return os.path.join(output_path, f)
+        raise RuntimeError(f"Piped failed: {piped_err}; yt-dlp also failed: {(result.stderr or result.stdout or '').strip()}")
 
 
 def get_video_title(url: str) -> str:
-    """Get the video title from YouTube."""
+    """Get the video title from Piped API, with yt-dlp fallback."""
     try:
-        cmd = ["yt-dlp", "--get-title", "--no-playlist", "--js-runtimes", "node", "--remote-components", "ejs:github", url]
+        video_id = extract_video_id(url)
+        data = fetch_piped_streams(video_id)
+        title = data.get("title", "").strip()
+        if title:
+            return title
+    except Exception:
+        pass
+    # Fallback to yt-dlp
+    try:
+        cmd = ["yt-dlp", "--get-title", "--no-playlist", url]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
             return result.stdout.strip()
@@ -158,13 +225,46 @@ def parse_musicxml_file(xml_path: str):
     return notes
 
 
+def download_audio_from_piped(piped_data: dict, output_path: str) -> str:
+    """Download audio using pre-fetched Piped stream data, convert to WAV."""
+    wav_path = os.path.join(output_path, "audio.wav")
+    streams = sorted(piped_data["audioStreams"], key=lambda s: s.get("bitrate", 0), reverse=True)
+    audio_url = streams[0]["url"]
+
+    raw_path = os.path.join(output_path, "audio_raw")
+    with requests.get(audio_url, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(raw_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+    cmd = ["ffmpeg", "-y", "-i", raw_path, "-ar", "44100", "-ac", "1", wav_path]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+    return wav_path
+
+
 def handle_youtube(url: str, output_dir: str, job_id: str):
     """Handle YouTube URL transcription."""
     update_status(output_dir, job_id, "downloading")
-    title = get_video_title(url)
+
+    video_id = extract_video_id(url)
+    title = "Unknown Song"
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        wav_path = download_audio(url, tmp_dir)
+        # Try Piped API first (works on cloud servers)
+        try:
+            piped_data = fetch_piped_streams(video_id)
+            title = piped_data.get("title", "").strip() or title
+            wav_path = download_audio_from_piped(piped_data, tmp_dir)
+        except Exception as piped_err:
+            # Fallback to yt-dlp (works on local dev)
+            print(f"Piped API failed ({piped_err}), falling back to yt-dlp...")
+            wav_path = download_audio(url, tmp_dir)
+            if title == "Unknown Song":
+                title = get_video_title(url)
+
         update_status(output_dir, job_id, "transcribing")
         notes = transcribe_audio(wav_path)
 
