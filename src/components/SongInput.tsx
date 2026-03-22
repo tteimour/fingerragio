@@ -107,6 +107,9 @@ export default function SongInput({ onSubmit, onFileUpload, disabled }: SongInpu
               Analyze
             </button>
           </div>
+          <p className="mt-2 text-xs text-zinc-600">
+            YouTube analysis requires running locally. For the hosted version, use file upload instead.
+          </p>
         </form>
       )}
 
