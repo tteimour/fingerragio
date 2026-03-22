@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #09090b;
+  --foreground: #fafafa;
 }
 
 @theme inline {
@@ -12,15 +12,115 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #18181b;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 3px;
+}
+
+/* Range input styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #3f3f46;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a855f7;
+  margin-top: -4px;
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #3f3f46;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #a855f7;
+  border: none;
+  cursor: pointer;
+}
+
+/* abcjs sheet music dark theme */
+.sheet-music-render svg {
+  width: 100% !important;
+}
+
+.sheet-music-render .abcjs-staff-extra,
+.sheet-music-render .abcjs-clef,
+.sheet-music-render .abcjs-key-signature,
+.sheet-music-render .abcjs-time-signature {
+  fill: #a1a1aa;
+}
+
+.sheet-music-render .abcjs-staff {
+  stroke: #3f3f46;
+}
+
+.sheet-music-render .abcjs-note,
+.sheet-music-render .abcjs-rest,
+.sheet-music-render .abcjs-beam-elem,
+.sheet-music-render .abcjs-note_small {
+  fill: #d4d4d8;
+  stroke: #d4d4d8;
+}
+
+.sheet-music-render .abcjs-bar {
+  stroke: #52525b;
+}
+
+.sheet-music-render .abcjs-brace,
+.sheet-music-render .abcjs-bracket {
+  fill: #71717a;
+  stroke: #71717a;
+}
+
+.sheet-music-render .abcjs-title {
+  fill: #e4e4e7;
+}
+
+.sheet-music-render .abcjs-tempo {
+  fill: #a1a1aa;
+}
+
+.sheet-music-render .abcjs-lyric {
+  fill: #a1a1aa;
+}
+
+/* Highlighted (active) notes during playback */
+.sheet-music-render .abcjs-highlight {
+  fill: #a855f7 !important;
+  stroke: #a855f7 !important;
+}
+
+.sheet-music-render .abcjs-highlight .abcjs-bar {
+  stroke: #a855f7 !important;
 }
