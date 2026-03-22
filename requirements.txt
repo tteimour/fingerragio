@@ -1,5 +1,5 @@
+pytubefix>=10.0.0
 yt-dlp>=2024.1.0
-requests>=2.31.0
 basic-pitch>=0.3.0
 pretty_midi>=0.2.10
 music21>=9.1.0
