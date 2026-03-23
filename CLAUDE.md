@@ -6,7 +6,7 @@ Piano learning website where users paste a YouTube link or upload a MIDI/MusicXM
 ## Tech Stack
 - **Frontend**: Next.js 15 + TypeScript + Tailwind CSS v4 (dark theme)
 - **Backend**: Next.js API routes + Python scripts (spawned via child_process)
-- **Audio Pipeline**: pytubefix (yt-dlp fallback) → ffmpeg → basic-pitch (Spotify) → note events → JSON
+- **Audio Pipeline**: pytubefix (yt-dlp fallback) → ffmpeg → basic-pitch (Spotify, tuned thresholds) → note events → JSON
 - **File Parsing**: pretty_midi (MIDI files), music21 (MusicXML files)
 - **Piano Sound**: Tone.js Sampler with Salamander Grand Piano samples (CDN-hosted)
 - **Sheet Music**: abcjs (ABC notation renderer, dynamically imported)
@@ -58,9 +58,10 @@ Piano learning website where users paste a YouTube link or upload a MIDI/MusicXM
 - Audio stream converted to WAV via `ffmpeg`
 
 ### Transcription
-- Uses `basic-pitch` (Spotify) — fast on CPU with good polyphony detection
-- Returns note events directly (start_time, end_time, pitch_midi, velocity, pitch_bend)
-- No separate model download step required
+- Uses `basic-pitch` (Spotify) with default thresholds + post-processing cleanup
+- `_remove_harmonics()`: filters overtone false positives (octave, fifth, etc. above louder notes)
+- `_limit_polyphony(max_notes=8)`: caps simultaneous notes, keeps bass + melody + loudest inner voices
+- Result is a clean piano-style arrangement, not raw frequency detection
 
 ### Sheet Music
 - Uses `abcjs` to render standard musical notation from ABC notation format

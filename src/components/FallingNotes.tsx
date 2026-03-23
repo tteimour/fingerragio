@@ -70,8 +70,8 @@ export default function FallingNotes({
       {/* Falling notes */}
       {visibleNotes.map((note, idx) => {
         const { left, width } = getNoteX(note.midi, startMidi, keyWidth);
-        const bottomPercent = ((currentTime - note.startTime) / windowSeconds) * 100 + 100;
         const heightPercent = (Math.max(note.duration, 0.08) / windowSeconds) * 100;
+        const topPercent = 100 - ((note.startTime + note.duration - currentTime) / windowSeconds) * 100;
 
         // Is this note currently playing?
         const isActive = currentTime >= note.startTime && currentTime < note.startTime + note.duration;
@@ -88,7 +88,7 @@ export default function FallingNotes({
             style={{
               left: `${left}px`,
               width: `${width}px`,
-              top: `${100 - bottomPercent}%`,
+              top: `${topPercent}%`,
               height: `${heightPercent}%`,
               minHeight: "6px",
               borderRadius: "5px",

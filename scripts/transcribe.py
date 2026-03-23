@@ -72,16 +72,13 @@ def download_audio_ytdlp(url: str, output_path: str) -> tuple[str, str]:
 
 
 def transcribe_audio(wav_path: str):
-    """Transcribe audio to piano notes using Spotify's basic-pitch."""
+    """Transcribe audio to piano notes, then clean up into a piano-style arrangement."""
     from basic_pitch.inference import predict
     import basic_pitch
 
-    # Use ONNX model explicitly — the bundled TFLite model can be broken
     onnx_model = Path(basic_pitch.__file__).parent / "saved_models" / "icassp_2022" / "nmp.onnx"
 
     _, _, note_events = predict(wav_path, model_or_model_path=onnx_model)
-    # note_events: list of (start_time, end_time, pitch_midi, amplitude, pitch_bend)
-    # amplitude is already 0.0-1.0 (NOT 0-127 MIDI velocity)
 
     notes = []
     for start, end, pitch, amplitude, _ in note_events:
@@ -95,7 +92,83 @@ def transcribe_audio(wav_path: str):
             })
 
     notes.sort(key=lambda n: (n["startTime"], n["midi"]))
+    notes = _remove_harmonics(notes)
+    notes = _limit_polyphony(notes, max_notes=8)
     return notes
+
+
+def _remove_harmonics(notes):
+    """Remove notes that are overtones of louder simultaneous notes.
+    A real piano has harmonics at octave (+12), octave+fifth (+19), 2 octaves (+24), etc.
+    If a quieter note sits at one of these intervals above a louder note, it's likely an overtone."""
+    harmonic_intervals = {12, 19, 24, 28, 31, 36}
+    to_remove = set()
+
+    for i, note in enumerate(notes):
+        if i in to_remove:
+            continue
+        for j in range(i + 1, len(notes)):
+            if j in to_remove:
+                continue
+            other = notes[j]
+            # Only check notes that overlap in time
+            if other["startTime"] > note["startTime"] + note["duration"]:
+                break
+            overlap_start = max(note["startTime"], other["startTime"])
+            overlap_end = min(
+                note["startTime"] + note["duration"],
+                other["startTime"] + other["duration"],
+            )
+            if overlap_end - overlap_start < 0.05:
+                continue
+
+            interval = other["midi"] - note["midi"]
+            if interval in harmonic_intervals and other["velocity"] < note["velocity"] * 0.85:
+                to_remove.add(j)
+            elif -interval in harmonic_intervals and note["velocity"] < other["velocity"] * 0.85:
+                to_remove.add(i)
+                break
+
+    return [n for i, n in enumerate(notes) if i not in to_remove]
+
+
+def _limit_polyphony(notes, max_notes=8):
+    """Limit simultaneous notes to what a pianist can play (max 10 fingers, typically fewer).
+    When too many notes overlap, keep the loudest + lowest (bass) + highest (melody)."""
+    if not notes:
+        return notes
+
+    # Build timeline events
+    events = []
+    for i, n in enumerate(notes):
+        events.append((n["startTime"], "on", i))
+        events.append((n["startTime"] + n["duration"], "off", i))
+    events.sort(key=lambda e: (e[0], 0 if e[1] == "off" else 1))
+
+    active = set()
+    to_remove = set()
+
+    for time, kind, idx in events:
+        if kind == "on":
+            active.add(idx)
+            if len(active) - len(active & to_remove) > max_notes:
+                # Too many — find the weakest note to drop (not bass, not melody, lowest velocity)
+                candidates = active - to_remove
+                if len(candidates) <= max_notes:
+                    continue
+                by_midi = sorted(candidates, key=lambda i: notes[i]["midi"])
+                bass = by_midi[0]
+                melody = by_midi[-1]
+                inner = [i for i in candidates if i != bass and i != melody]
+                inner.sort(key=lambda i: notes[i]["velocity"])
+                # Remove quietest inner voices until we're at max
+                excess = len(candidates) - max_notes
+                for k in range(min(excess, len(inner))):
+                    to_remove.add(inner[k])
+        else:
+            active.discard(idx)
+
+    return [n for i, n in enumerate(notes) if i not in to_remove]
 
 
 def parse_midi_file(midi_path: str):

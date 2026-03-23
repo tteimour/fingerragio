@@ -283,7 +283,6 @@ export default function Home() {
               />
               <PianoKeyboard
                 activeNotes={player.activeNotes}
-                scrollContainerRef={scrollContainerRef}
                 keyWidth={keyWidth}
               />
             </div>
